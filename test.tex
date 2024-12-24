@@ -1,0 +1,185 @@
+% BASIC SETTINGS
+\documentclass[a4paper,12pt]{article} % Set paper size and document type
+\usepackage{lmodern} % Use a slightly nicer looking font
+\usepackage{url} % Proper formatting for URLs
+\usepackage{graphicx} % Handle inclusion of non-PDF graphics
+\usepackage{subfig} % Allow sub-figures inside a figure
+\usepackage{enumitem} % Allow lists to pick up numbering where the last list left off
+\usepackage{kotex}
+% Change margins - default margins are too broad
+\usepackage[margin=20mm]{geometry}
+
+% SOURCE CODE LISTING SETTINGS 
+% https://en.wikibooks.org/wiki/LaTeX/Source_Code_Listings
+\usepackage{listings}
+\usepackage{color}
+
+\usepackage{amsmath}
+
+
+% Color definitions for source code listings
+\definecolor{mygreen}{rgb}{0,0.6,0}
+\definecolor{mygray}{rgb}{0.5,0.5,0.5}
+\definecolor{mymauve}{rgb}{0.58,0,0.82}
+
+% Formatting (line breaks, spacing, etc...) for code
+\lstset{ 
+  backgroundcolor=\color{white},   % choose the background color; you must add \usepackage{color} or \usepackage{xcolor}
+  basicstyle=\footnotesize,        % the size of the fonts that are used for the code
+  breakatwhitespace=false,         % sets if automatic breaks should only happen at whitespace
+  breaklines=true,                 % sets automatic line breaking
+  captionpos=b,                    % sets the caption-position to bottom
+  commentstyle=\color{mygreen},    % comment style
+  deletekeywords={...},            % if you want to delete keywords from the given language
+  escapeinside={\%*}{*)},          % if you want to add LaTeX within your code
+  extendedchars=true,              % lets you use non-ASCII characters; for 8-bits encodings only, does not work with UTF-8
+  frame=single,	                   % adds a frame around the code
+  keepspaces=true,                 % keeps spaces in text, useful for keeping indentation of code (possibly needs columns=flexible)
+  keywordstyle=\color{blue},       % keyword style
+  otherkeywords={*,...},           % if you want to add more keywords to the set
+  numbers=left,                    % where to put the line-numbers; possible values are (none, left, right)
+  numbersep=5pt,                   % how far the line-numbers are from the code
+  numberstyle=\tiny\color{mygray}, % the style that is used for the line-numbers
+  rulecolor=\color{black},         % if not set, the frame-color may be changed on line-breaks within not-black text (e.g. comments (green here))
+  showspaces=false,                % show spaces everywhere adding particular underscores; it overrides 'showstringspaces'
+  showstringspaces=false,          % underline spaces within strings only
+  showtabs=false,                  % show tabs within strings adding particular underscores
+  stepnumber=2,                    % the step between two line-numbers. If it's 1, each line will be numbered
+  stringstyle=\color{mymauve},     % string literal style
+  tabsize=2,	                   % sets default tabsize to 2 spaces
+  title=\lstname                   % show the filename of files included with \lstinputlisting; also try caption instead of title
+}
+
+% Set document title and author
+\title{SHA-3 \space{} Keccak-f}
+\author{cpprhtn}
+\date{2023-11-28} % If date is left blank, it will be hidden
+
+% Document body
+\begin{document}
+
+\maketitle % Insert the title, author, and date
+
+\section{Keccak-f 함수 정의} %  Create a section
+\vspace{2mm}
+
+% We can use the listing package to place source code into our documents from a file:
+
+\textbf{1.1 Theta 함수 정의:}
+\[
+    C[x] = A[x] \oplus A[x + 5] \oplus A[x + 10] \oplus A[x + 15] \oplus A[x + 20]
+\]
+\[
+    D[x] = C[(x + 4) \mod 5] \oplus \text{{ROTL64}}(C[(x + 1) \mod 5], 1)
+\]
+\[
+    A[x + 5 \cdot y] \hat{=} A[x + 5 \cdot y] \oplus D[x]
+\]
+
+\begin{lstlisting}[language=C, caption={Theta 함수}]
+void theta(uint64 *A) {
+    uint64 C[5], D[5];
+    for (size_t i = 0; i < 5; i++) {
+        C[i] = A[i] ^ A[i + 5] ^ A[i + 10] ^ A[i + 15] ^ A[i + 20];
+    }
+
+    for (size_t i = 0; i < 5; i++) {
+        D[i] = C[(i + 4) % 5] ^ ROTL64(C[(i + 1) % 5], 1);
+    }
+
+    for (size_t i = 0; i < 5; i++) {
+        for (size_t j = 0; j < 5; j++) {
+            A[i + 5 * j] ^= D[i];
+        }
+    }
+}
+\end{lstlisting}
+\vspace{5mm}
+\textbf{1.2 Rho 함수 정의:}
+\[
+    A[x] \hat{=} \text{{ROTL64}}(A[x], \text{{RHO}}[x])
+\]
+
+\begin{lstlisting}[language=C, caption={Rho 함수}]
+void rho(uint64 *A) {
+    for (size_t i = 0; i < 25; i++) {
+        A[i] = ROTL64(A[i], RHO[i]);
+    }
+}
+\end{lstlisting}
+\vspace{5mm}
+\textbf{1.3 Pi 함수 정의:}
+\[
+    B[x] = A[y]
+\]
+\[
+    A[x] \hat{=} B[x]
+\]
+\begin{lstlisting}[language=C, caption={Pi 함수}]
+void pi(uint64 *A) {
+    uint64 B[25];
+    for (size_t i = 0; i < 25; i++) {
+        size_t x = i % 5;
+        size_t y = (2 * i + 3 * (i / 5)) % 5;
+        size_t index = 5 * x + y;
+        B[index] = A[i];
+    }
+    memcpy(A, B, sizeof(B));
+}
+\end{lstlisting}
+\vspace{5mm}
+\textbf{1.4 Chi 함수 정의:}
+\[
+    B[x] = A[x] \oplus (\lnot A[5 \cdot x + ((y + 1) \mod 5)] \land A[5 \cdot x + ((y + 2) \mod 5)])
+\]
+\[
+    A[x] \hat{=} B[x]
+\]
+\begin{lstlisting}[language=C, caption={Chi 함수}]
+void chi(uint64 *A) {
+    uint64 B[25];
+    for (size_t i = 0; i < 25; i++) {
+        size_t x = i % 5;
+        size_t y = (2 * i + 3 * (i / 5)) % 5;
+        size_t index = 5 * x + y;
+        B[index] = A[index] ^ ((~A[5 * x + ((y + 1) % 5)]) & A[5 * x + ((y + 2) % 5)]);
+    }
+    memcpy(A, B, sizeof(B));
+}
+\end{lstlisting}
+\vspace{5mm}
+\textbf{1.5 Iota 함수 정의:}
+\[
+    A[0] \hat{=} A[0] \oplus \text{{RC}}[\text{{round}}]
+\]
+\begin{lstlisting}[language=C, caption={Iota 함수}]
+void iota(uint64 *A, size_t round) {
+    A[0] ^= RC[round];
+}
+\end{lstlisting}
+\textbf{1.6 Keccak-f 함수 정의:}
+\begin{lstlisting}[language=C, caption={Iota 함수}]
+void keccakF(uint64 *A) {
+    for (size_t round = 0; round < KECCAK_ROUNDS; round++) {
+        theta(A);
+        rho(A);
+        pi(A);
+        chi(A);
+        iota(A, round);
+    }
+}
+\end{lstlisting}
+
+
+
+\noindent
+
+
+
+% Forces content onto the next page, useful for documents which should look nice when printed out
+\clearpage
+
+
+
+
+\end{document}
